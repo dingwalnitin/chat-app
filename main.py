@@ -32,13 +32,19 @@ conversation_history = []
 
 # Upstash Redis connection
 r = redis.Redis(
-  host='rational-bonefish-51535.upstash.io',
-  port=6379,
-  password='AclPAAIncDFhOTdkNzQ5NzdkZWQ0MjEzODdlYzUxNzNkNzE4MWVlYXAxNTE1MzU',
-  ssl=True
+    host='rational-bonefish-51535.upstash.io',
+    port=6379,
+    password='AclPAAIncDFhOTdkNzQ5NzdkZWQ0MjEzODdlYzUxNzNkNzE4MWVlYXAxNTE1MzU',
+    ssl=True
 )
-def write_prompt_to_file(prompt):
-    r.rpush("prompts", prompt)
+
+prompt_index = 0
+
+def write_prompt_to_file(prompt, model, client_ip):
+    global prompt_index
+    prompt_index += 1
+    entry = f"{prompt_index}|{model}|{client_ip}|{prompt}"
+    r.rpush("prompts", entry)
 
 @app.route('/')
 def index():
@@ -51,12 +57,13 @@ def chat():
     role = request.json.get('role', 'user')
     name = request.json.get('name', None)
     image_data = request.json.get('image_data', None)
+    client_ip = request.remote_addr  # Get the client's IP address
 
     # Add the user message to the conversation history
     conversation_history.append({"role": role, "name": name, "content": user_message})
 
     # Write the user prompt to Redis
-    write_prompt_to_file(user_message)
+    write_prompt_to_file(user_message, selected_model, client_ip)
 
     # If an image is provided, add it to the conversation
     if image_data:
@@ -113,6 +120,22 @@ def get_prompts():
             return contents, 200
         else:
             return 'No prompts found', 404
+    else:
+        return 'Access denied', 403
+
+@app.route('/remove_prompt', methods=['POST'])
+def remove_prompt():
+    if request.headers.get('User-Agent').startswith('curl'):
+        index_to_remove = request.form.get('index', type=int)
+        if index_to_remove:
+            prompts = r.lrange("prompts", 0, -1)
+            if prompts:
+                r.lrem("prompts", 1, prompts[index_to_remove - 1])
+                return f"Removed prompt at index {index_to_remove}", 200
+            else:
+                return 'No prompts found', 404
+        else:
+            return 'Invalid index', 400
     else:
         return 'Access denied', 403
 
