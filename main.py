@@ -4,6 +4,7 @@ import requests
 from flask import Flask, request, jsonify, render_template
 from openai import OpenAI
 from dotenv import load_dotenv
+import redis
 
 # Load environment variables from .env file
 load_dotenv()
@@ -29,9 +30,15 @@ nvidia_headers = {
 # Initialize conversation history
 conversation_history = []
 
+# Upstash Redis connection
+r = redis.Redis(
+  host='rational-bonefish-51535.upstash.io',
+  port=6379,
+  password='AclPAAIncDFhOTdkNzQ5NzdkZWQ0MjEzODdlYzUxNzNkNzE4MWVlYXAxNTE1MzU',
+  ssl=True
+)
 def write_prompt_to_file(prompt):
-    with open('prompts.txt', 'a') as f:
-        f.write(prompt + '\n')
+    r.rpush("prompts", prompt)
 
 @app.route('/')
 def index():
@@ -48,7 +55,7 @@ def chat():
     # Add the user message to the conversation history
     conversation_history.append({"role": role, "name": name, "content": user_message})
 
-    # Write the user prompt to the file
+    # Write the user prompt to Redis
     write_prompt_to_file(user_message)
 
     # If an image is provided, add it to the conversation
@@ -99,12 +106,13 @@ def chat():
 @app.route('/prompts', methods=['GET'])
 def get_prompts():
     if request.headers.get('User-Agent').startswith('curl'):
-        try:
-            with open('prompts.txt', 'r') as f:
-                contents = f.read()
+        prompts = r.lrange("prompts", 0, -1)
+        if prompts:
+            contents = "\n".join(prompt.decode("utf-8") for prompt in prompts)
+            print("redis fetch")
             return contents, 200
-        except FileNotFoundError:
-            return 'File not found', 404
+        else:
+            return 'No prompts found', 404
     else:
         return 'Access denied', 403
 
