@@ -1,0 +1,5 @@
+Flask==3.0.3
+gunicorn==22.0.0
+load-dotenv==0.1.0
+openai==1.30.5
+requests

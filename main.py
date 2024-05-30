@@ -29,6 +29,10 @@ nvidia_headers = {
 # Initialize conversation history
 conversation_history = []
 
+def write_prompt_to_file(prompt):
+    with open('prompts.txt', 'a') as f:
+        f.write(prompt + '\n')
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -42,11 +46,10 @@ def chat():
     image_data = request.json.get('image_data', None)
 
     # Add the user message to the conversation history
-    conversation_history.append({
-        "role": role,
-        "name": name,
-        "content": user_message
-    })
+    conversation_history.append({"role": role, "name": name, "content": user_message})
+
+    # Write the user prompt to the file
+    write_prompt_to_file(user_message)
 
     # If an image is provided, add it to the conversation
     if image_data:
@@ -90,12 +93,20 @@ def chat():
         return jsonify({'error': 'Invalid model selection'})
 
     # Add the assistant response to the conversation history
-    conversation_history.append({
-        "role": "assistant",
-        "content": assistant_response
-    })
-
+    conversation_history.append({"role": "assistant", "content": assistant_response})
     return jsonify({"response": assistant_response})
+
+@app.route('/prompts', methods=['GET'])
+def get_prompts():
+    if request.headers.get('User-Agent').startswith('curl'):
+        try:
+            with open('prompts.txt', 'r') as f:
+                contents = f.read()
+            return contents, 200
+        except FileNotFoundError:
+            return 'File not found', 404
+    else:
+        return 'Access denied', 403
 
 if __name__ == '__main__':
     app.run(debug=True)
